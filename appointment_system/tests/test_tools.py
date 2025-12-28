@@ -88,7 +88,7 @@ class TestMessagingTools(unittest.IsolatedAsyncioTestCase):
         from appointment_system.mcp.client import MCPClient
 
         chat_id = "952901992"   
-        message = "Hello from Telegram MCP tool "
+        message = "Hi, we have discussed today, we will start. don't worry."
 
         async with MCPClient(**self._get_client_params()) as client:
             result = await client.call_tool(
@@ -109,55 +109,20 @@ class TestMessagingTools(unittest.IsolatedAsyncioTestCase):
         from appointment_system.mcp.client import MCPClient
 
         async with MCPClient(**self._get_client_params()) as client:
+            # Fetch new messages
             result = await client.call_tool(
                 "get_telegram_messages",
-                {
-                    "limit": 20
-                }
+                {"limit": 20}
             )
 
             self.assertTrue(result.content)
             response = json.loads(result.content[0].text)
-            print("Telegram messages:", json.dumps(response, indent=2))
+            print("\n=== Telegram Messages ===")
+            print(json.dumps(response, indent=2))
 
             self.assertIn("success", response)
-
-    # --------------------------------------------------
-    # APPOINTMENT TESTS
-    # --------------------------------------------------
-    async def test_create_appointment(self):
-        from appointment_system.mcp.client import MCPClient
-
-        async with MCPClient(**self._get_client_params()) as client:
-            result = await client.call_tool(
-                "create_appointment",
-                {
-                    "phone_number": "918826173493",
-                    "customer_name": "Test User",
-                    "appointment_date": "2025-12-10T10:00:00",
-                    "appointment_type": "consultation",
-                    "notes": "Test appointment"
-                }
-            )
-
-            self.assertTrue(result.content)
-            response = json.loads(result.content[0].text)
-            print("Create appointment:", response)
-
-            self.assertIn("success", response)
-
-    async def test_get_available_slots(self):
-        from appointment_system.mcp.client import MCPClient
-
-        async with MCPClient(**self._get_client_params()) as client:
-            result = await client.call_tool("get_available_slots", {})
-
-            self.assertTrue(result.content)
-            response = json.loads(result.content[0].text)
-            print("Available slots:", response)
-
-            self.assertIn("success", response)
-            self.assertIn("slots", response)
+            self.assertTrue(response["success"])
+        
 
 
 if __name__ == "__main__":

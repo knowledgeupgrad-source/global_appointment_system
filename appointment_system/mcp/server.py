@@ -19,7 +19,6 @@ logging.basicConfig()
 logging.getLogger("sqlalchemy.engine").setLevel(logging.INFO)
 
 mcp = FastMCP("appointment_system")
-db = get_connection()
 whatsapp = WhatsAppClient()
 telegram = TelegramClient()
 
@@ -47,16 +46,20 @@ def send_telegram_message(chat_id: str, message: str) -> str:
             "success": False,
             "error": str(e)
         })
-@mcp.tool(description="Fetch latest Telegram messages received by the bot.")
+@mcp.tool(description="Fetch new Telegram messages and save to database.")
 def get_telegram_messages(limit: int = 20) -> str:
     """
-    Fetch updates/messages from Telegram bot
+    Fetch updates/messages from Telegram bot and save to database
+    
+    Args:
+        limit: Maximum number of messages to fetch
     """
     try:
-        logger.info("Fetching Telegram messages")
+        logger.info(f"Fetching {limit} Telegram messages")
 
-        updates = telegram.get_updates(limit=limit)
+        updates, saved_messages = telegram.get_updates(limit=limit)
 
+        # Format message details
         messages = []
         for update in updates:
             if "message" in update:
@@ -64,24 +67,28 @@ def get_telegram_messages(limit: int = 20) -> str:
                 messages.append({
                     "update_id": update.get("update_id"),
                     "chat_id": msg["chat"]["id"],
-                    "from": msg.get("from", {}).get("username"),
+                    "username": msg.get("from", {}).get("username"),
+                    "first_name": msg.get("from", {}).get("first_name"),
                     "text": msg.get("text"),
                     "timestamp": msg.get("date")
                 })
 
         return json.dumps({
             "success": True,
-            "messages_count": len(messages),
+            "messages_fetched": len(updates),
+            "messages_saved": len(saved_messages),
             "messages": messages
         }, indent=2)
 
     except Exception as e:
-        logger.error("Error fetching Telegram messages", exc_info=True)
+        logger.error(f"Error fetching Telegram messages: {e}", exc_info=True)
         return json.dumps({
             "success": False,
             "error": str(e),
             "messages": []
         })
+
+
 
 
 
@@ -92,7 +99,7 @@ def get_whatsapp_messages(phone_number: str, limit: int = 50) -> str:
 
         phone_number = phone_number.lstrip('+')
 
-        conn = db.get_connection()
+        conn = get_connection()
         with conn.cursor() as cur:
             cur.execute("""
                 SELECT id,
@@ -170,7 +177,7 @@ def send_whatsapp_message(phone_number: str, message: str) -> str:
 @mcp.tool(description="Create a new appointment for a customer.")
 def create_appointment(phone_number: str, customer_name: str, appointment_date: str, appointment_type: str = "consultation", notes: str = None) -> str:
     try:
-        conn = db.get_connection()
+        conn = get_connection()
         with conn.cursor() as cur:
             cur.execute("""
                 INSERT INTO appointments (phone_number, customer_name, appointment_date, appointment_type, notes, status)
@@ -207,7 +214,7 @@ def create_appointment(phone_number: str, customer_name: str, appointment_date: 
 @mcp.tool(description="Get available appointment slots for booking.")
 def get_available_slots(date: str = None) -> str:
     try:
-        conn = db.get_connection()
+        conn = get_connection()
         with conn.cursor() as cur:
             if date:
                 cur.execute("""
@@ -264,7 +271,7 @@ def update_appointment_status(appointment_id: str, status: str) -> str:
                 "error": f"Invalid status. Must be one of: {', '.join(valid_statuses)}"
             })
         
-        conn = db.get_connection()
+        conn = get_connection()
         with conn.cursor() as cur:
             cur.execute("""
                 UPDATE appointments
@@ -300,7 +307,7 @@ def update_appointment_status(appointment_id: str, status: str) -> str:
 @mcp.tool(description="Save or update conversation state for a customer to track booking flow.")
 def save_conversation_state(phone_number: str, current_step: str, context: str) -> str:
     try:
-        conn = db.get_connection()
+        conn = get_connection()
         with conn.cursor() as cur:
             cur.execute("""
                 INSERT INTO appointment_management_system.conversation(phone_number, current_step, context, last_interaction)
@@ -332,7 +339,7 @@ def save_conversation_state(phone_number: str, current_step: str, context: str) 
 @mcp.tool(description="Get current conversation state for a customer.")
 def get_conversation_state(phone_number: str) -> str:
     try:
-        conn = db.get_connection()
+        conn = get_connection()
         with conn.cursor() as cur:
             cur.execute("""
                 SELECT current_step, context, last_interaction
