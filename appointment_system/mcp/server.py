@@ -11,6 +11,9 @@ from flask import Blueprint, request
 from appointment_system.utils.logger import logger
 from appointment_system.services.whatsapp_communication import WhatsAppClient
 from appointment_system.services.telegram_client import TelegramClient
+from starlette.requests import Request
+from starlette.responses import JSONResponse
+
 
 
 webhook_bp = Blueprint("whatsapp_webhook", __name__)
@@ -22,6 +25,9 @@ mcp = FastMCP("appointment_system")
 whatsapp = WhatsAppClient()
 telegram = TelegramClient()
 
+@mcp.custom_route("/health", methods=["GET"])
+async def health_check(request: Request):
+    return JSONResponse({"status": "ok"})
 @mcp.tool(description="Send a Telegram message to a user or group.")
 def send_telegram_message(chat_id: str, message: str) -> str:
     """
@@ -170,214 +176,12 @@ def send_whatsapp_message(phone_number: str, message: str) -> str:
             "success": False,
             "error": str(e)
         })
-
-
-
-
-@mcp.tool(description="Create a new appointment for a customer.")
-def create_appointment(phone_number: str, customer_name: str, appointment_date: str, appointment_type: str = "consultation", notes: str = None) -> str:
-    try:
-        conn = get_connection()
-        with conn.cursor() as cur:
-            cur.execute("""
-                INSERT INTO appointments (phone_number, customer_name, appointment_date, appointment_type, notes, status)
-                VALUES (%s, %s, %s, %s, %s, 'pending')
-                RETURNING id, phone_number, customer_name, appointment_date, appointment_type, status
-            """, (phone_number, customer_name, appointment_date, appointment_type, notes))
-            
-            result = cur.fetchone()
-            conn.commit()
-            
-            if result:
-                appointment_id, phone, name, date, apt_type, status = result
-                
-                return json.dumps({
-                    "success": True,
-                    "appointment": {
-                        "id": str(appointment_id),
-                        "phone_number": phone,
-                        "customer_name": name,
-                        "appointment_date": str(date),
-                        "appointment_type": apt_type,
-                        "status": status
-                    }
-                }, indent=2)
-    
-    except Exception as e:
-        logger.error(f"Error creating appointment: {e}", exc_info=True)
-        return json.dumps({
-            "success": False,
-            "error": str(e)
-        })
-
-
-@mcp.tool(description="Get available appointment slots for booking.")
-def get_available_slots(date: str = None) -> str:
-    try:
-        conn = get_connection()
-        with conn.cursor() as cur:
-            if date:
-                cur.execute("""
-                    SELECT id, slot_date, slot_time, max_capacity, current_bookings
-                    FROM appointment_slots
-                    WHERE slot_date = %s AND is_available = TRUE
-                    AND current_bookings < max_capacity
-                    ORDER BY slot_time
-                """, (date,))
-            else:
-                cur.execute("""
-                    SELECT id, slot_date, slot_time, max_capacity, current_bookings
-                    FROM appointment_slots
-                    WHERE slot_date >= CURRENT_DATE AND is_available = TRUE
-                    AND current_bookings < max_capacity
-                    ORDER BY slot_date, slot_time
-                    LIMIT 20
-                """)
-            
-            results = cur.fetchall()
-            
-            slots = []
-            for row in results:
-                slot_id, slot_date, slot_time, max_capacity, current_bookings = row
-                slots.append({
-                    "id": str(slot_id),
-                    "date": str(slot_date),
-                    "time": str(slot_time),
-                    "available_capacity": max_capacity - current_bookings
-                })
-            
-            return json.dumps({
-                "success": True,
-                "slots_count": len(slots),
-                "slots": slots
-            }, indent=2)
-    
-    except Exception as e:
-        logger.error(f"Error getting available slots: {e}", exc_info=True)
-        return json.dumps({
-            "success": False,
-            "error": str(e),
-            "slots": []
-        })
-
-
-@mcp.tool(description="Update appointment status (pending, confirmed, cancelled, completed).")
-def update_appointment_status(appointment_id: str, status: str) -> str:
-    try:
-        valid_statuses = ['pending', 'confirmed', 'cancelled', 'completed']
-        if status not in valid_statuses:
-            return json.dumps({
-                "success": False,
-                "error": f"Invalid status. Must be one of: {', '.join(valid_statuses)}"
-            })
-        
-        conn = get_connection()
-        with conn.cursor() as cur:
-            cur.execute("""
-                UPDATE appointments
-                SET status = %s, updated_at = CURRENT_TIMESTAMP
-                WHERE id = %s
-                RETURNING id, status
-            """, (status, appointment_id))
-            
-            result = cur.fetchone()
-            conn.commit()
-            
-            if result:
-                apt_id, new_status = result
-                return json.dumps({
-                    "success": True,
-                    "appointment_id": str(apt_id),
-                    "new_status": new_status
-                }, indent=2)
-            else:
-                return json.dumps({
-                    "success": False,
-                    "error": "Appointment not found"
-                })
-    
-    except Exception as e:
-        logger.error(f"Error updating appointment status: {e}", exc_info=True)
-        return json.dumps({
-            "success": False,
-            "error": str(e)
-        })
-
-
-@mcp.tool(description="Save or update conversation state for a customer to track booking flow.")
-def save_conversation_state(phone_number: str, current_step: str, context: str) -> str:
-    try:
-        conn = get_connection()
-        with conn.cursor() as cur:
-            cur.execute("""
-                INSERT INTO appointment_management_system.conversation(phone_number, current_step, context, last_interaction)
-                VALUES (%s, %s, %s::jsonb, CURRENT_TIMESTAMP)
-                ON CONFLICT (phone_number)
-                DO UPDATE SET
-                    current_step = EXCLUDED.current_step,
-                    context = EXCLUDED.context,
-                    last_interaction = CURRENT_TIMESTAMP
-                RETURNING id
-            """, (phone_number, current_step, context))
-            
-            result = cur.fetchone()
-            conn.commit()
-            
-            return json.dumps({
-                "success": True,
-                "conversation_id": str(result[0])
-            }, indent=2)
-    
-    except Exception as e:
-        logger.error(f"Error saving conversation state: {e}", exc_info=True)
-        return json.dumps({
-            "success": False,
-            "error": str(e)
-        })
-
-
-@mcp.tool(description="Get current conversation state for a customer.")
-def get_conversation_state(phone_number: str) -> str:
-    try:
-        conn = get_connection()
-        with conn.cursor() as cur:
-            cur.execute("""
-                SELECT current_step, context, last_interaction
-                FROM conversation_state
-                WHERE phone_number = %s
-            """, (phone_number,))
-            
-            result = cur.fetchone()
-            
-            if result:
-                step, context, last_interaction = result
-                return json.dumps({
-                    "success": True,
-                    "conversation_state": {
-                        "current_step": step,
-                        "context": context,
-                        "last_interaction": str(last_interaction)
-                    }
-                }, indent=2)
-            else:
-                return json.dumps({
-                    "success": True,
-                    "conversation_state": None
-                }, indent=2)
-    
-    except Exception as e:
-        logger.error(f"Error getting conversation state: {e}", exc_info=True)
-        return json.dumps({
-            "success": False,
-            "error": str(e)
-        })
-
-
 if __name__ == "__main__":
     env = os.environ.get("ENV", "local")
+    env = 'local1'
     if env == "local":
         mcp.run(transport="stdio")
     else:
         mcp.settings.host = "0.0.0.0"
         mcp.settings.port = 8000
-        mcp.run(transport="stramable-http")
+        mcp.run(transport="streamable-http")

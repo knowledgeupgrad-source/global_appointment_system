@@ -1,9 +1,11 @@
 from __future__ import annotations
 import os
 import secrets
+from pathlib import Path
 from contextlib import AsyncExitStack
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
+from mcp.client.sse import sse_client
 from typing import Any, Dict, List
 
 
@@ -18,49 +20,54 @@ class MCPClient:
             cls._instance.value = secrets.randbelow(100)
         return cls._instance
     
-    def __init__(self, serverFile: str = "server.py"):
+    def __init__(self, serverFile: str = "server.py", sse_url: str = None):
         # Only initialize once
         if not hasattr(self, '_initialized'):
-            env = os.environ.copy()
-            if 'PYTHONPATH' in env:
-                env['PYTHONPATH'] = f"{os.getcwd()}:{env['PYTHONPATH']}"
-            else:
-                env['PYTHONPATH'] = os.getcwd()
-            if os.path.isabs(serverFile):
-                server_path = serverFile
-            else:
-                if os.path.exists(serverFile):
-                    # If the file exists relative to current directory, use it
-                    server_path = os.path.abspath(serverFile)
-                else:
-                    # Otherwise, try to find it relative to the module
-                    current_dir = os.path.dirname(os.path.abspath(__file__))
-                    potential_path = os.path.join(current_dir, '..', serverFile)
-                    if os.path.exists(potential_path):
-                        server_path = os.path.abspath(potential_path)
-                    else:
-                        # Last resort: use as-is
-                        server_path = os.path.abspath(serverFile)
-            
-            self.server_params = StdioServerParameters(
-                command="python",
-                args=[server_path],
-                env=env,
-            )
-            self.exit_stack = None
+            self.sse_url = sse_url
             self.session = None
-            self.stdio = None
-            self.write = None
+            self.exit_stack = None
+            
+            if not sse_url:  # stdio mode (local)
+                env = os.environ.copy()
+                
+                # Set PYTHONPATH to project root
+                if 'PYTHONPATH' in env:
+                    env['PYTHONPATH'] = f"{os.getcwd()}:{env['PYTHONPATH']}"
+                else:
+                    env['PYTHONPATH'] = os.getcwd()
+                
+                # Handle server path - support both absolute and relative paths
+                if os.path.isabs(serverFile):
+                    server_path = serverFile
+                else:
+                    # If serverFile is relative, resolve from current working directory
+                    server_path = os.path.abspath(serverFile)
+                
+                self.server_params = StdioServerParameters(
+                    command="python",
+                    args=[server_path],
+                    env=env,
+                )
+            else:
+                self.server_params = None
+            
             self._initialized = True
 
     async def start_session(self):
         """Start MCP session"""
         if self.session is not None:
             return
-            
-        # Create AsyncExitStack in this task so enter/exit happen in same task
+        
         self.exit_stack = AsyncExitStack()
-        try:
+        
+        if self.sse_url:  # SSE mode (remote)
+            sse_transport = await self.exit_stack.enter_async_context(
+                sse_client(self.sse_url)
+            )
+            self.session = await self.exit_stack.enter_async_context(
+                ClientSession(*sse_transport)
+            )
+        else:  # stdio mode (local)
             stdio_transport = await self.exit_stack.enter_async_context(
                 stdio_client(self.server_params)
             )
@@ -68,27 +75,16 @@ class MCPClient:
             self.session = await self.exit_stack.enter_async_context(
                 ClientSession(self.stdio, self.write)
             )
-            await self.session.initialize()
-            print("MCP session started successfully")
-        except Exception as e:
-            # If initialization fails, clean up the exit stack
-            if self.exit_stack is not None:
-                await self.exit_stack.aclose()
-                self.exit_stack = None
-            self.session = None
-            raise
+        
+        await self.session.initialize()
+        print("MCP session started successfully")
        
     async def cleanup(self):
         """Cleanup MCP session"""
-        if self.exit_stack is not None:
-            try:
-                await self.exit_stack.aclose()
-            except Exception as e:
-                print(f"Error closing exit stack: {e}")
-            finally:
-                self.exit_stack = None
-                self.session = None
-                print("MCP session closed!")
+        if self.session:
+            await self.exit_stack.aclose()
+            self.session = None
+            print("MCP session closed!")
 
     async def call_tool(self, tool_name: str, tool_args: Dict[str, Any]):
         if self.session is None:
