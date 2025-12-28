@@ -178,7 +178,7 @@ def send_whatsapp_message(phone_number: str, message: str) -> str:
         })
 if __name__ == "__main__":
     env = os.environ.get("ENV", "local")
-    env = 'local1'
+    #env = 'local1'
     if env == "local":
         mcp.run(transport="stdio")
     else:
