@@ -1,8 +1,9 @@
 {
-    "python-envs.pythonProjects": [],
-    "python.testing.pytestArgs": [
-        "appointment_system"
-    ],
+    "python.testing.pytestEnabled": true,
     "python.testing.unittestEnabled": false,
-    "python.testing.pytestEnabled": true
+    "python.testing.pytestArgs": [
+        "appointment_system/tests/"
+    ],
+    "python.testing.cwd": "${workspaceFolder}",
+    "python.testing.autoTestDiscoverOnSaveEnabled": true
 }

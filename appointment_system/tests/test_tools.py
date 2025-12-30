@@ -1,3 +1,5 @@
+# appointment_system/mcp/tests/test_tools.py
+
 import unittest
 import json
 import os
@@ -5,7 +7,7 @@ import subprocess
 import time
 from pathlib import Path
 from mcp.client.session import ClientSession
-from mcp.client.streamable_http import streamable_http_client  # Changed from streamablehttp_client
+from mcp.client.streamable_http import streamable_http_client
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -21,13 +23,11 @@ class TestMessagingTools(unittest.IsolatedAsyncioTestCase):
         print(f"Transport mode: {cls.transport_mode}")
         
         if cls.transport_mode == "sse":
-            cls.server_url = os.getenv("MCP_SERVER_URL", "http://localhost:8000/mcp")  # Add /sse endpoint
+            cls.server_url = os.getenv("MCP_SERVER_URL", "http://localhost:8000/mcp")
             
-            # Setup environment with correct PYTHONPATH
             env = os.environ.copy()
             env["ENV"] = "production"
             
-            # Add project root to PYTHONPATH
             project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '../..'))
             if 'PYTHONPATH' in env:
                 env['PYTHONPATH'] = f"{project_root}:{env['PYTHONPATH']}"
@@ -36,23 +36,19 @@ class TestMessagingTools(unittest.IsolatedAsyncioTestCase):
             
             print(f"PYTHONPATH set to: {env['PYTHONPATH']}")
             
-            # Start the server process with output capture
             cls.server_process = subprocess.Popen(
                 ["python", "appointment_system/mcp/server.py"],
                 env=env,
                 stdout=subprocess.PIPE,
-                stderr=subprocess.STDOUT,  # Combine stderr with stdout
+                stderr=subprocess.STDOUT,
                 cwd=project_root,
                 text=True,
                 bufsize=1
             )
             
-            # Wait and check if server started successfully
             time.sleep(3)
             
-            # Check if process is still running
             if cls.server_process.poll() is not None:
-                # Process has terminated, print output
                 output, _ = cls.server_process.communicate()
                 print("SERVER FAILED TO START!")
                 print("Server output:")
@@ -73,7 +69,6 @@ class TestMessagingTools(unittest.IsolatedAsyncioTestCase):
             cls.server_process.terminate()
             try:
                 cls.server_process.wait(timeout=5)
-                # Print any remaining output
                 if cls.server_process.stdout:
                     remaining = cls.server_process.stdout.read()
                     if remaining:
@@ -106,7 +101,6 @@ class TestMessagingTools(unittest.IsolatedAsyncioTestCase):
                 result = await mcpClient.call_tool(tool_name, tool_input)
                 return result
             else:
-                # SSE mode - use streamable_http_client (not streamablehttp_client)
                 async with streamable_http_client(self.server_url) as (read, write, _):
                     async with ClientSession(read, write) as session:
                         await session.initialize()
@@ -136,7 +130,10 @@ class TestMessagingTools(unittest.IsolatedAsyncioTestCase):
             if self.transport_mode == "stdio" and mcpClient:
                 await mcpClient.cleanup()
 
-    # ... rest of your test methods remain the same
+    # ============================================
+    # TESTS
+    # ============================================
+
     async def test_get_all_tools(self):
         tools = await self.get_tools()
         self.assertTrue(len(tools) > 0)
@@ -145,19 +142,19 @@ class TestMessagingTools(unittest.IsolatedAsyncioTestCase):
         print("Available tools:", tool_names)
 
         # WhatsApp
-        self.assertIn("send_whatsapp_message", tool_names)
-        self.assertIn("get_whatsapp_messages", tool_names)
+        self.assertIn("tool_send_whatsapp_message", tool_names)
+        self.assertIn("tool_get_whatsapp_messages", tool_names)
 
         # Telegram
-        self.assertIn("send_telegram_message", tool_names)
-        self.assertIn("get_telegram_messages", tool_names)
+        self.assertIn("tool_send_telegram_message", tool_names)
+        self.assertIn("tool_get_telegram_messages", tool_names)
 
     async def test_send_whatsapp_message(self):
         phone_number = "918826173493"
-        message = "Hello, which time would you like to book an appointment?"
+        message = "Hello, testing new output format!"
 
         result = await self._call_tool(
-            "send_whatsapp_message",
+            "tool_send_whatsapp_message",
             {
                 "phone_number": phone_number,
                 "message": message
@@ -166,14 +163,20 @@ class TestMessagingTools(unittest.IsolatedAsyncioTestCase):
 
         self.assertTrue(result.content)
         response = json.loads(result.content[0].text)
-        print("WhatsApp send result:", response)
+        print("\n=== WhatsApp Send Result ===")
+        print(json.dumps(response, indent=2))
+        
+        # Check new format
         self.assertIn("success", response)
+        self.assertIn("output", response)
+        self.assertIn("message", response["output"])
+        self.assertIn("data", response["output"])
 
     async def test_get_whatsapp_messages(self):
         phone_number = "918826173493"
 
         result = await self._call_tool(
-            "get_whatsapp_messages",
+            "tool_get_whatsapp_messages",
             {
                 "phone_number": phone_number,
                 "limit": 50
@@ -182,15 +185,21 @@ class TestMessagingTools(unittest.IsolatedAsyncioTestCase):
 
         self.assertTrue(result.content)
         response = json.loads(result.content[0].text)
-        print("WhatsApp messages:", json.dumps(response, indent=2))
+        print("\n=== WhatsApp Messages ===")
+        print(json.dumps(response, indent=2))
+        
+        # Check new format
         self.assertIn("success", response)
+        self.assertIn("output", response)
+        if response["success"]:
+            self.assertIn("data", response["output"])
 
     async def test_send_telegram_message(self):
-        chat_id = "5200468446"   
-        message = "Hi, we have discussed today, we will start. don't worry."
+        chat_id = "952901992"   
+        message = "Hi, testing new output format!"
 
         result = await self._call_tool(
-            "send_telegram_message",
+            "tool_send_telegram_message",
             {
                 "chat_id": chat_id,
                 "message": message
@@ -199,12 +208,17 @@ class TestMessagingTools(unittest.IsolatedAsyncioTestCase):
 
         self.assertTrue(result.content)
         response = json.loads(result.content[0].text)
-        print("Telegram send result:", response)
+        print("\n=== Telegram Send Result ===")
+        print(json.dumps(response, indent=2))
+        
+        # Check new format
         self.assertIn("success", response)
+        self.assertIn("output", response)
+        self.assertTrue(response["success"])
 
     async def test_get_telegram_messages(self):
         result = await self._call_tool(
-            "get_telegram_messages",
+            "tool_get_telegram_messages",
             {"limit": 20}
         )
 
@@ -212,8 +226,293 @@ class TestMessagingTools(unittest.IsolatedAsyncioTestCase):
         response = json.loads(result.content[0].text)
         print("\n=== Telegram Messages ===")
         print(json.dumps(response, indent=2))
+        
+        # Check new format
+        self.assertIn("success", response)
+        self.assertIn("output", response)
+        self.assertTrue(response["success"])
+
+    async def test_get_restaurant_options(self):
+        result = await self._call_tool(
+            "tool_get_restaurant_menu_options",
+            {}
+        )
+
+        self.assertTrue(result.content)
+        response = json.loads(result.content[0].text)
+        print("\n=== Restaurant Menu Options ===")
+        print(json.dumps(response, indent=2))
+        
+        # Check new format
         self.assertIn("success", response)
         self.assertTrue(response["success"])
+        self.assertIn("output", response)
+        self.assertIn("message", response["output"])
+        self.assertIn("data", response["output"])
+
+    async def test_get_menu_all(self):
+        """Test getting all menu items"""
+        result = await self._call_tool(
+            "tool_get_menu",
+            {"category": "all"}
+        )
+        
+        self.assertTrue(result.content)
+        response = json.loads(result.content[0].text)
+        
+        print("\n=== Full Menu ===")
+        print(f"Message: {response['output']['message']}")
+        print(f"Total items: {len(response['output']['data'])}")
+        
+        # Assertions
+        self.assertTrue(response["success"])
+        self.assertIn("output", response)
+        self.assertIn("message", response["output"])
+        self.assertIn("data", response["output"])
+        self.assertIsInstance(response["output"]["data"], list)
+        self.assertGreater(len(response["output"]["data"]), 0)
+
+    async def test_get_menu_structure(self):
+        """Test menu returns both message and data in new format"""
+        result = await self._call_tool(
+            "tool_get_menu",
+            {"category": "Desserts"}
+        )
+        
+        response = json.loads(result.content[0].text)
+        
+        print("\n=== MESSAGE (for display) ===")
+        print(response["output"]["message"])
+        
+        print("\n=== DATA (structured) ===")
+        print(json.dumps(response["output"]["data"], indent=2))
+        
+        # Assertions - new format
+        self.assertTrue(response["success"])
+        self.assertIn("output", response)
+        self.assertIn("message", response["output"])
+        self.assertIn("data", response["output"])
+        self.assertIsInstance(response["output"]["data"], list)
+        
+        if len(response["output"]["data"]) > 0:
+            first_item = response["output"]["data"][0]
+            self.assertIn("name", first_item)
+            self.assertIn("price", first_item)
+
+    async def test_get_vegetarian_options(self):
+        """Test vegetarian menu"""
+        result = await self._call_tool(
+            "tool_get_vegetarian_options",
+            {}
+        )
+        
+        response = json.loads(result.content[0].text)
+        print("\n=== Vegetarian Options ===")
+        print(response["output"]["message"])
+        
+        self.assertTrue(response["success"])
+        self.assertIn("output", response)
+
+    async def test_get_specials(self):
+        """Test special dishes"""
+        result = await self._call_tool(
+            "tool_get_specials",
+            {}
+        )
+        
+        response = json.loads(result.content[0].text)
+        print("\n=== Today's Specials ===")
+        print(response["output"]["message"])
+        
+        self.assertTrue(response["success"])
+        self.assertIn("output", response)
+
+    async def test_get_gluten_free_items(self):
+        """Test gluten-free items"""
+        result = await self._call_tool(
+            "tool_get_gluten_free_items",
+            {}
+        )
+        
+        response = json.loads(result.content[0].text)
+        print("\n=== Gluten-Free Options ===")
+        print(response["output"]["message"])
+        
+        self.assertTrue(response["success"])
+        self.assertIn("output", response)
+
+    async def test_get_desserts(self):
+        """Test dessert menu"""
+        result = await self._call_tool(
+            "tool_get_desserts",
+            {}
+        )
+        
+        response = json.loads(result.content[0].text)
+        print("\n=== Desserts Menu ===")
+        print(response["output"]["message"])
+        
+        self.assertTrue(response["success"])
+        self.assertIn("output", response)
+
+    async def test_get_appetizers_under_price(self):
+        """Test appetizers under specific price"""
+        result = await self._call_tool(
+            "tool_get_appetizers_under_price",
+            {"max_price": 10.0}
+        )
+        
+        response = json.loads(result.content[0].text)
+        print("\n=== Appetizers Under $10 ===")
+        print(response["output"]["message"])
+        
+        self.assertTrue(response["success"])
+        self.assertIn("output", response)
+
+    async def test_get_restaurant_location(self):
+        """Test restaurant location"""
+        result = await self._call_tool(
+            "tool_get_restaurant_location",
+            {}
+        )
+        
+        response = json.loads(result.content[0].text)
+        print("\n=== Restaurant Location ===")
+        print(response["output"]["message"])
+        
+        self.assertTrue(response["success"])
+        self.assertIn("output", response)
+        self.assertIn("data", response["output"])
+
+    async def test_is_restaurant_open(self):
+        """Test restaurant open status"""
+        result = await self._call_tool(
+            "tool_is_restaurant_open",
+            {}
+        )
+        
+        response = json.loads(result.content[0].text)
+        print("\n=== Restaurant Open Status ===")
+        print(response["output"]["message"])
+        print(f"Is Open: {response['output']['data']['is_open']}")
+        
+        self.assertTrue(response["success"])
+        self.assertIn("output", response)
+        self.assertIn("data", response["output"])
+        self.assertIn("is_open", response["output"]["data"])
+
+    async def test_send_menu_to_whatsapp(self):
+        """Test sending menu via WhatsApp"""
+        # Get menu first
+        menu_result = await self._call_tool(
+            "tool_get_menu",
+            {"category": "Desserts"}
+        )
+        
+        menu_response = json.loads(menu_result.content[0].text)
+        
+        # Send via WhatsApp
+        send_result = await self._call_tool(
+            "tool_send_whatsapp_message",
+            {
+                "phone_number": "918826173493",
+                "message": menu_response["output"]["message"]
+            }
+        )
+        
+        send_response = json.loads(send_result.content[0].text)
+        print("\n=== Menu Sent to WhatsApp ===")
+        print(send_response["output"]["message"])
+        
+        self.assertTrue(send_response["success"])
+
+    async def test_send_menu_to_telegram(self):
+        """Test sending menu via Telegram"""
+        # Get menu first
+        menu_result = await self._call_tool(
+            "tool_get_menu",
+            {"category": "Appetizers"}
+        )
+        
+        menu_response = json.loads(menu_result.content[0].text)
+        
+        # Send via Telegram
+        send_result = await self._call_tool(
+            "tool_send_telegram_message",
+            {
+                "chat_id": "952901992",
+                "message": menu_response["output"]["message"]
+            }
+        )
+        
+        send_response = json.loads(send_result.content[0].text)
+        print("\n=== Menu Sent to Telegram ===")
+        print(send_response["output"]["message"])
+        
+        self.assertTrue(send_response["success"])
+
+    async def test_place_order_simple(self):
+        """Test placing order - simple return format"""
+        
+        result = await self._call_tool(
+            "tool_restaurant_order_place_and_validate",
+            {
+                "phone_number": "918826173493",
+                "table_number": "5",
+                "item": "Pizza",
+                "quantity": 2,
+                "price": 12.99
+            }
+        )
+        
+        response = json.loads(result.content[0].text)
+        print("\n=== Order Placed ===")
+        print(json.dumps(response, indent=2))
+        
+        # Assertions
+        self.assertTrue(response["success"])
+        self.assertIn("output", response)
+        self.assertIn("data", response["output"])
+        
+        # Check data structure
+        data = response["output"]["data"]
+        self.assertEqual(data["item"], "Pizza")
+        self.assertEqual(data["quantity"], 2)
+        self.assertEqual(data["price"], 12.99)
+        
+        # message should be None when no special instructions
+        self.assertIsNone(response["output"]["message"])
+
+
+    async def test_place_order_with_special_instructions(self):
+        """Test placing order with special instructions"""
+        
+        result = await self._call_tool(
+            "tool_restaurant_order_place_and_validate",
+            {
+                "phone_number": "918826173493",
+                "table_number": "3",
+                "item": "Spaghetti",
+                "quantity": 1,
+                "price": 15.99,
+                "special_instructions": "Extra cheese, no onions"
+            }
+        )
+        
+        response = json.loads(result.content[0].text)
+        print("\n=== Order with Special Instructions ===")
+        print(json.dumps(response, indent=2))
+        
+        self.assertTrue(response["success"])
+        
+        # Check message contains special instructions
+        self.assertEqual(response["output"]["message"], "Extra cheese, no onions")
+        
+        # Check data
+        data = response["output"]["data"]
+        self.assertEqual(data["item"], "Spaghetti")
+        self.assertEqual(data["quantity"], 1)
+        self.assertEqual(data["price"], 15.99)
 
 
 if __name__ == "__main__":
