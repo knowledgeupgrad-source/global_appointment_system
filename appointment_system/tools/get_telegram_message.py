@@ -4,7 +4,7 @@ from appointment_system.services.telegram_client import TelegramClient
 
 telegram = TelegramClient()
 
-def get_telegram_messages(limit: int = 20) -> str:
+def get_telegram_message(limit: int = 20) -> str:
     """Fetch updates/messages from Telegram bot and save to database"""
     try:
         logger.info(f"Fetching {limit} Telegram messages")

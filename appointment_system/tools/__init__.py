@@ -1,9 +1,9 @@
 # appointment_system/mcp/tools/__init__.py
 
 from .send_telegram_message import send_telegram_message
-from .get_telegram_message import get_telegram_messages
+from .get_telegram_message import get_telegram_message
 from .send_whatsapp_message import send_whatsapp_message
-from .get_whatsapp_message import get_whatsapp_messages
+from .get_whatsapp_message import get_whatsapp_message
 from .get_restaurant_menu_options import get_restaurant_menu_options
 from .get_menu import get_menu
 from .get_vegetarian_options import get_vegetarian_options
@@ -17,9 +17,9 @@ from .restaurant_order_place_and_validate import restaurant_order_place_and_vali
 
 __all__ = [
     "send_telegram_message",
-    "get_telegram_messages",
+    "get_telegram_message",
     "send_whatsapp_message",
-    "get_whatsapp_messages",
+    "get_whatsapp_message",
     "get_restaurant_menu_options",
     "get_menu",
     "get_vegetarian_options",

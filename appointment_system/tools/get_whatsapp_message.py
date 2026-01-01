@@ -2,7 +2,7 @@ import json
 from appointment_system.utils.logger import logger
 from appointment_system.utils.postgres import get_connection
 
-def get_whatsapp_messages(phone_number: str, limit: int = 50) -> str:
+def get_whatsapp_message(phone_number: str, limit: int = 50) -> str:
     """Fetch unprocessed WhatsApp messages"""
     try:
         logger.info(f"Fetching WhatsApp messages for {phone_number}")
